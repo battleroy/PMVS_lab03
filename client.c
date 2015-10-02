@@ -15,6 +15,8 @@ void error(const char *msg)
 
 int main(int argc, char *argv[])
 {
+    char message[2048];
+    char buf[sizeof(message)];
     int sockfd, portno, n;
     struct sockaddr_in serv_addr;
     struct hostent *server;
@@ -41,17 +43,19 @@ int main(int argc, char *argv[])
     serv_addr.sin_port = htons(portno);
     if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
         error("ERROR connecting");
-    printf("Please enter the message: ");
-    bzero(buffer,256);
-    fgets(buffer,255,stdin);
-    n = write(sockfd,buffer,strlen(buffer));
-    if (n < 0) 
-         error("ERROR writing to socket");
-    bzero(buffer,256);
-    n = read(sockfd,buffer,255);
-    if (n < 0) 
-         error("ERROR reading from socket");
-    printf("%s\n",buffer);
-    close(sockfd);
+    while(1) {
+    	bzero(message, sizeof(message));
+	    bzero(buf, sizeof(buf));
+	    printf("Enter command: "); 
+	    fgets(message, sizeof(message), stdin);
+	    send(sockfd, message, sizeof(message), 0);
+	    int bytes_read = 0;
+        while (1) {
+            bytes_read = recv(sockfd, buf, sizeof(buf), 0);
+            if (strlen(buf) == 0)
+            	break;
+            fwrite(buf, sizeof(char), bytes_read, stdout);
+        }
+    }
     return 0;
 }
